@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>Nagrik360 — See it. Report it. Fix it.</title>
+<meta name="description" content="AI-powered civic issue reporting: litter, spitting, potholes, dust, bad AQI, burning, tree-cutting & vehicle smoke — verified with live photos, routed straight to your government." />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🛡️</text></svg>" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,700;1,9..144,500&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css" />
+<link rel="stylesheet" href="css/animations.css" />
+</head>
+<body>
+
+<!-- ===== Top App Bar ===== -->
+<header class="topbar">
+  <div class="topbar__brand">
+    <span class="brand-mark" aria-hidden="true">
+      <svg viewBox="0 0 40 40" width="30" height="30"><circle cx="20" cy="20" r="18" fill="none" stroke="currentColor" stroke-width="2.5"/><circle cx="20" cy="20" r="6" fill="currentColor"/><circle class="pulse-ring" cx="20" cy="20" r="11" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
+    </span>
+    <span class="brand-word">Nagrik<em>360</em></span>
+  </div>
+  <div class="topbar__actions">
+    <button class="icon-btn" id="aqiPill" title="Live AQI near you">
+      <span class="dot" id="aqiDot"></span><span id="aqiText">AQI —</span>
+    </button>
+    <button class="icon-btn icon-btn--ghost" id="authBtn">Sign in</button>
+  </div>
+</header>
+
+<!-- ===== Hero ===== -->
+<section class="hero">
+  <div class="hero__lane" aria-hidden="true"></div>
+  <p class="eyebrow">CIVIC SENSE, CROWD-VERIFIED, AI-ASSISTED</p>
+  <h1 class="hero__title">Spot a problem on<br/>your street? <em>Flag it.</em></h1>
+  <p class="hero__sub">Litter &amp; dumping, public spitting, potholes, road dust, bad AQI, open burning, illegal tree-cutting, smoke-belching vehicles — report with a live photo, get an instant AI severity check, and route it straight to the right government desk.</p>
+  <div class="hero__cta">
+    <button class="btn btn--primary btn--lg" id="heroReportBtn">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+      Report an issue
+    </button>
+    <button class="btn btn--ghost btn--lg" id="heroFeedBtn">View live feed</button>
+  </div>
+  <div class="hero__stats" id="statsStrip">
+    <div class="stat"><span class="stat__num" id="statTotal">—</span><span class="stat__label">reports filed</span></div>
+    <div class="stat"><span class="stat__num" id="statForwarded">—</span><span class="stat__label">sent to gov't</span></div>
+    <div class="stat"><span class="stat__num" id="statResolved">—</span><span class="stat__label">resolved</span></div>
+  </div>
+</section>
+
+<!-- ===== Tab Nav ===== -->
+<nav class="tabnav" id="tabnav">
+  <button class="tab is-active" data-tab="report">Report</button>
+  <button class="tab" data-tab="feed">Live Feed</button>
+  <button class="tab" data-tab="aqi">Air Quality</button>
+  <button class="tab" data-tab="assistant">AI Assistant</button>
+  <button class="tab" data-tab="leaderboard">Leaderboard</button>
+</nav>
+
+<main class="container">
+
+  <!-- ===== REPORT TAB ===== -->
+  <section class="panel is-active" id="panel-report">
+    <div class="grid-2">
+      <form class="card form-card" id="reportForm">
+        <h2 class="card__title">File a verified civic report</h2>
+        <p class="card__hint">Pick a category, snap a live photo, and let our Groq-powered AI assess severity, health impact, and the right next step.</p>
+
+        <label class="field-label">Issue category</label>
+        <div class="cat-grid" id="catGrid">
+          <!-- injected by JS -->
+        </div>
+
+        <label class="field-label" for="description">Describe what's happening</label>
+        <textarea id="description" rows="3" placeholder="E.g. Construction debris dumped on the footpath near the bus stop, blocking pedestrians for 3 days."></textarea>
+
+        <label class="field-label">Live photo evidence</label>
+        <div class="upload-row">
+          <div class="upload-box" id="uploadBox1">
+            <input type="file" accept="image/*" capture="environment" id="imageInput" hidden />
+            <div class="upload-box__placeholder" id="uploadPlaceholder1">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+              <span>Capture / Upload photo</span>
+            </div>
+            <img id="imagePreview1" class="upload-box__preview" hidden />
+          </div>
+          <div class="upload-box" id="uploadBox2">
+            <input type="file" accept="image/*" capture="environment" id="verifyInput" hidden />
+            <div class="upload-box__placeholder" id="uploadPlaceholder2">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>
+              <span>Verification angle (optional)</span>
+            </div>
+            <img id="imagePreview2" class="upload-box__preview" hidden />
+          </div>
+        </div>
+        <p class="micro-hint">Two angles improve AI verification confidence and reduce false reports.</p>
+
+        <label class="field-label">Location</label>
+        <button type="button" class="btn btn--soft" id="locBtn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+          <span id="locLabel">Use my current location</span>
+        </button>
+
+        <button type="submit" class="btn btn--primary btn--block btn--lg" id="submitBtn">
+          <span id="submitBtnText">Analyze &amp; submit report</span>
+        </button>
+      </form>
+
+      <!-- AI Result panel -->
+      <div class="card result-card" id="resultCard">
+        <div class="result-empty" id="resultEmpty">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2a7 7 0 0 0-7 7c0 3 2 5 2 7h10c0-2 2-4 2-7a7 7 0 0 0-7-7z"/><path d="M9 21h6"/><path d="M10 18h4"/></svg>
+          <p>Your AI severity report, health impact, fix-it plan, and ready-to-send government complaint will appear here.</p>
+        </div>
+        <div class="result-body" id="resultBody" hidden>
+          <div class="severity-badge" id="severityBadge">medium</div>
+          <h3 id="resultSummary">—</h3>
+
+          <h4 class="result-sub">Health &amp; environmental impact</h4>
+          <ul class="impact-list" id="impactList"></ul>
+
+          <h4 class="result-sub">Suggested fix — who does what</h4>
+          <div class="solutions-list" id="solutionsList"></div>
+
+          <h4 class="result-sub">Route to authority</h4>
+          <p class="dept-line">Suggested department: <strong id="deptName">—</strong></p>
+          <textarea id="govComplaintText" rows="4" class="gov-textarea"></textarea>
+          <button class="btn btn--primary btn--block" id="sendGovBtn">Send directly to government</button>
+          <p class="gov-status" id="govStatus"></p>
+
+          <h4 class="result-sub">Share &amp; raise awareness</h4>
+          <div class="share-row">
+            <button class="share-btn share-btn--x" id="shareX">Post on X</button>
+            <button class="share-btn share-btn--wa" id="shareWA">WhatsApp</button>
+            <button class="share-btn share-btn--fb" id="shareFB">Facebook</button>
+            <button class="share-btn share-btn--copy" id="shareCopy">Copy caption</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== FEED TAB ===== -->
+  <section class="panel" id="panel-feed">
+    <div class="feed-toolbar">
+      <h2 class="section-title">Live community feed</h2>
+      <select id="feedFilter" class="select">
+        <option value="">All categories</option>
+      </select>
+    </div>
+    <div class="feed-grid" id="feedGrid"><p class="muted">Loading reports…</p></div>
+  </section>
+
+  <!-- ===== AQI TAB ===== -->
+  <section class="panel" id="panel-aqi">
+    <h2 class="section-title">Air quality near you</h2>
+    <div class="aqi-card" id="aqiCard">
+      <p class="muted">Tap below to fetch live air quality for your location.</p>
+      <button class="btn btn--primary" id="fetchAqiBtn">Get live AQI</button>
+    </div>
+    <div class="aqi-detail" id="aqiDetail" hidden></div>
+    <div class="card">
+      <h4 class="result-sub">What bad AQI does to you</h4>
+      <ul class="impact-list">
+        <li>PM2.5 penetrates deep into lungs and bloodstream, raising risk of asthma, bronchitis and heart disease.</li>
+        <li>Children, the elderly and pregnant women face disproportionately higher risk even at "Moderate" levels.</li>
+        <li>Long-term exposure is linked to reduced lung development in children and lower life expectancy.</li>
+      </ul>
+      <h4 class="result-sub">What you can do today</h4>
+      <ul class="impact-list">
+        <li>Avoid outdoor exercise when AQI is above 150; prefer early morning hours.</li>
+        <li>Use N95 masks on high-AQI days; run air purifiers indoors if available.</li>
+        <li>Report visible burning, dust sources or smoke-emitting vehicles right here — every report helps build the evidence trail.</li>
+        <li>Carpool, use public transport, or switch to EVs to cut your own contribution.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ===== ASSISTANT TAB ===== -->
+  <section class="panel" id="panel-assistant">
+    <h2 class="section-title">Ask the civic AI assistant</h2>
+    <div class="chat-card">
+      <div class="chat-log" id="chatLog">
+        <div class="chat-msg chat-msg--bot">Namaste! I'm your Nagrik360 assistant, powered by Groq. Ask me about waste segregation, AQI health effects, tree-cutting laws, or how to write a strong civic complaint.</div>
+      </div>
+      <form class="chat-input-row" id="chatForm">
+        <input type="text" id="chatInput" placeholder="E.g. How do I report illegal tree felling?" autocomplete="off" />
+        <button class="btn btn--primary" type="submit">Send</button>
+      </form>
+    </div>
+  </section>
+
+  <!-- ===== LEADERBOARD TAB ===== -->
+  <section class="panel" id="panel-leaderboard">
+    <h2 class="section-title">Top civic contributors</h2>
+    <div class="card">
+      <table class="leader-table" id="leaderTable">
+        <thead><tr><th>#</th><th>Citizen</th><th>Points</th><th>Badge</th></tr></thead>
+        <tbody><tr><td colspan="4" class="muted">Sign up and submit reports to appear here.</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+
+</main>
+
+<!-- ===== Auth Modal ===== -->
+<div class="modal" id="authModal">
+  <div class="modal__sheet">
+    <button class="modal__close" id="authClose">×</button>
+    <div class="modal__tabs">
+      <button class="modal__tab is-active" data-form="login">Sign in</button>
+      <button class="modal__tab" data-form="signup">Create account</button>
+    </div>
+    <form id="loginForm" class="modal__form">
+      <input type="email" placeholder="Email" required id="loginEmail" />
+      <input type="password" placeholder="Password" required id="loginPassword" />
+      <button class="btn btn--primary btn--block" type="submit">Sign in</button>
+    </form>
+    <form id="signupForm" class="modal__form" hidden>
+      <input type="text" placeholder="Full name" required id="signupName" />
+      <input type="email" placeholder="Email" required id="signupEmail" />
+      <input type="password" placeholder="Password (min 6 chars)" required id="signupPassword" minlength="6" />
+      <button class="btn btn--primary btn--block" type="submit">Create account</button>
+    </form>
+    <p class="modal__msg" id="authMsg"></p>
+  </div>
+</div>
+
+<!-- ===== Toast ===== -->
+<div class="toast" id="toast"></div>
+
+<!-- ===== Floating Report Button (mobile) ===== -->
+<button class="fab" id="fabReport" aria-label="Report an issue">
+  <span class="fab__ring"></span>
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+</button>
+
+<footer class="footer">
+  <p>Nagrik360 — Built for citizens who refuse to look away. Not affiliated with any government body; reports are routed as citizen grievances.</p>
+</footer>
+
+<script src="js/config.js"></script>
+<script src="js/api.js"></script>
+<script src="js/animations.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
