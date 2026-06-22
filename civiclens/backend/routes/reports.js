@@ -4,11 +4,11 @@ const { v4: uuid } = require('uuid');
 const { getDB } = require('../db');
 const { analyzeReport } = require('../utils/groqClient');
 const { sendGovReport } = require('../utils/mailer');
-const { uploadToR2 } = require('../utils/s3');
+const { uploadToCloudinary } = require('../utils/s3');
 
 const router = express.Router();
 
-// ---- Multer: keep files in memory so we can stream straight to R2.
+// ---- Multer: hold files in memory, then stream straight to Cloudinary.
 //     No files ever touch the server disk — required for Render (ephemeral filesystem). ----
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -35,12 +35,12 @@ router.post(
 
       if (!category) return res.status(400).json({ error: 'category is required' });
 
-      // Upload photos to Cloudflare R2; get back permanent public URLs.
+      // Upload photos to Cloudinary — returns permanent CDN URLs.
       const imagePath = req.files?.image?.[0]
-        ? await uploadToR2(req.files.image[0], 'reports')
+        ? await uploadToCloudinary(req.files.image[0], 'nagrik360/reports')
         : null;
       const verificationPath = req.files?.verification_image?.[0]
-        ? await uploadToR2(req.files.verification_image[0], 'reports/verification')
+        ? await uploadToCloudinary(req.files.verification_image[0], 'nagrik360/verification')
         : null;
 
       // ---- AI analysis via Groq ----
@@ -117,7 +117,6 @@ router.get('/', async (req, res) => {
 
     let reports = await db.all(query, params);
 
-    // Optional proximity filter (Haversine, done in JS since PostGIS not required at this scale)
     if (near_lat && near_lon) {
       const R = Number(radius_km) || 5;
       reports = reports.filter((r) => {
@@ -236,7 +235,7 @@ router.patch('/:id/status', async (req, res) => {
   res.json({ report });
 });
 
-// ---- Haversine distance (km) — used for proximity filtering ----
+// ---- Haversine distance (km) ----
 function haversine(lat1, lon1, lat2, lon2) {
   const R = 6371;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;

@@ -9,12 +9,12 @@
 
 ## What it does
 
-1. **Report a civic issue** — pick a category, attach a live photo, allow GPS location, submit.
-2. **AI analysis (Groq / Llama 3.3 70B)** — severity rating, health impact, solution plan, formal government complaint text, social media caption — all generated in one inference call.
-3. **Forward to government** — one click sends the drafted complaint to the configured grievance email with a tracked reference ID.
+1. **Report a civic issue** — pick a category, attach a live photo, allow GPS, submit.
+2. **AI analysis (Groq / Llama 3.3 70B)** — severity rating, health impact, solution plan, government complaint text, social caption — all in one inference call.
+3. **Forward to government** — one click emails the complaint to the configured grievance address with a tracked reference ID.
 4. **Community feed** — public feed of all reports, upvote to confirm, comment threads.
 5. **Live AQI** — real-time air quality (PM2.5, PM10, NO₂, Ozone) via Open-Meteo (free, no key needed).
-6. **AI assistant** — in-app chat for civic questions (waste laws, tree protection, complaint tips).
+6. **AI assistant** — in-app chat for civic questions.
 7. **Leaderboard** — points and badges for active reporters.
 
 ---
@@ -24,14 +24,14 @@
 | Layer | Technology |
 |---|---|
 | Backend | Node.js + Express |
-| Database | PostgreSQL (via `pg`) |
-| Photo storage | **Cloudflare R2** (S3-compatible, zero egress fees) |
-| AI | Groq API — `llama-3.3-70b-versatile` |
-| Email | Nodemailer (SMTP) |
+| Database | PostgreSQL |
+| Photo storage | **Cloudinary** (free 25GB, no credit card, global CDN) |
+| AI | Groq API — Llama 3.3 70B |
+| Email | Nodemailer (SMTP / Gmail) |
 | Auth | JWT + bcrypt |
 | Frontend | Vanilla JS / HTML / CSS — no build step |
-| Backend deploy | Render.com (Web Service + Postgres) |
-| Frontend deploy | Vercel (static) |
+| Backend deploy | Render.com (free Web Service + Postgres) |
+| Frontend deploy | Vercel (free static hosting) |
 
 ---
 
@@ -46,26 +46,26 @@ nagrik360/
 │   │   ├── .env.example           ← Copy to .env and fill in your values
 │   │   ├── package.json
 │   │   ├── routes/
-│   │   │   ├── reports.js         ← Report CRUD, photo upload → R2, AI analysis, gov routing
+│   │   │   ├── reports.js         ← Report CRUD, photo upload → Cloudinary, AI, gov routing
 │   │   │   ├── ai.js              ← Chat assistant + AQI lookup
 │   │   │   └── auth.js            ← Signup, login, leaderboard
 │   │   └── utils/
-│   │       ├── s3.js              ← Cloudflare R2 upload/delete
-│   │       ├── groqClient.js      ← Groq AI calls (report analysis + chat)
+│   │       ├── s3.js              ← Cloudinary upload/delete (named s3.js for consistency)
+│   │       ├── groqClient.js      ← Groq AI calls
 │   │       ├── aqi.js             ← Open-Meteo AQI fetch
-│   │       └── mailer.js          ← SMTP government email dispatch
+│   │       └── mailer.js          ← SMTP government email
 │   ├── frontend/
 │   │   ├── index.html
 │   │   ├── css/
 │   │   │   ├── style.css
 │   │   │   └── animations.css
 │   │   ├── js/
-│   │   │   ├── config.js          ← API base URL (change for production)
+│   │   │   ├── config.js          ← API base URL (update for production)
 │   │   │   ├── api.js             ← All fetch calls to the backend
-│   │   │   ├── app.js             ← App logic, UI rendering
-│   │   │   └── animations.js      ← Motion/interaction layer
+│   │   │   ├── app.js             ← App logic and UI rendering
+│   │   │   └── animations.js      ← Motion and interaction layer
 │   │   └── vercel.json
-│   ├── README.md                  ← You are here
+│   ├── README.md
 │   ├── DEPLOYMENT.md              ← Step-by-step deploy guide
 │   └── .gitignore
 └── render.yaml                    ← Render Blueprint (one-click backend + DB deploy)
@@ -77,9 +77,9 @@ nagrik360/
 
 ### Prerequisites
 - Node.js ≥ 18
-- PostgreSQL running locally (or a free cloud Postgres from Render/Supabase/Neon)
+- PostgreSQL running locally (or a free cloud Postgres from Render / Supabase / Neon)
 - A free [Groq API key](https://console.groq.com/keys)
-- A [Cloudflare account](https://dash.cloudflare.com) with R2 bucket set up (see DEPLOYMENT.md §3)
+- A free [Cloudinary account](https://cloudinary.com/users/register_free) — no credit card
 
 ### 1. Install dependencies
 ```bash
@@ -91,86 +91,78 @@ npm install
 ```bash
 cp .env.example .env
 ```
-Open `.env` and fill in at minimum:
-- `DATABASE_URL` — your Postgres connection string
-- `PGSSL=false` — for local Postgres without SSL
-- `GROQ_API_KEY` — from console.groq.com
-- `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_ENDPOINT`, `R2_PUBLIC_URL` — from Cloudflare R2
 
-See DEPLOYMENT.md §3 for exact steps to get R2 credentials.
+Open `.env` and fill in:
+
+| Variable | Where to get it |
+|---|---|
+| `DATABASE_URL` | Your Postgres connection string |
+| `PGSSL` | `false` for local Postgres |
+| `GROQ_API_KEY` | https://console.groq.com/keys |
+| `CLOUDINARY_CLOUD_NAME` | Cloudinary dashboard home page |
+| `CLOUDINARY_API_KEY` | Cloudinary dashboard home page |
+| `CLOUDINARY_API_SECRET` | Cloudinary dashboard home page |
 
 ### 3. Start the backend
 ```bash
 npm run dev
 ```
-The server starts at `http://localhost:5000`. On first run it auto-creates all database tables — no migration script needed.
 
-Check it's working:
+First run auto-creates all database tables — no migration script needed.
+
+Verify:
 ```bash
 curl http://localhost:5000/api/health
 # → {"status":"ok","service":"nagrik360-backend",...}
 ```
 
 ### 4. Start the frontend
-The frontend is pure static HTML — no build step.
-
 ```bash
 cd ../frontend
 npx serve .
-# opens at http://localhost:3000
 ```
-Or just open `index.html` directly in a browser (though `file://` blocks some browser APIs — a local server is better).
-
-### 5. What to set in config.js for production
-Before deploying the frontend, update `frontend/js/config.js`:
-```js
-const CONFIG = {
-  API_BASE: 'https://your-backend.onrender.com/api',
-};
-```
-(For local dev it auto-uses `http://localhost:5000/api` when on localhost — no change needed.)
+Opens at `http://localhost:3000`. The frontend auto-detects localhost and points to `http://localhost:5000/api`.
 
 ---
 
-## Environment variables
+## How photo storage works (Cloudinary flow)
 
-All variables are documented with explanations in `backend/.env.example`. Here's a quick reference:
+```
+User picks a photo
+        ↓
+multer.memoryStorage() holds it in RAM
+(never written to server disk)
+        ↓
+uploadToCloudinary(file, 'nagrik360/reports')
+        ↓
+Cloudinary stores + auto-optimises the image
+        ↓
+Returns: https://res.cloudinary.com/<cloud>/image/upload/.../<id>.jpg
+        ↓
+URL saved in reports.image_path in Postgres
+        ↓
+Frontend renders <img src="https://res.cloudinary.com/..."> via Cloudinary CDN
+```
 
-| Variable | What it does |
+Photos are served from Cloudinary's global CDN — fast anywhere in the world. The server never stores files locally, so Render redeploys never lose any photos.
+
+---
+
+## Environment variables quick reference
+
+See `backend/.env.example` for the full annotated list.
+
+| Variable | Purpose |
 |---|---|
 | `DATABASE_URL` | PostgreSQL connection string |
 | `PGSSL` | `true` for cloud Postgres, `false` for local |
-| `JWT_SECRET` | Secret for signing auth tokens — make it long and random |
-| `GROQ_API_KEY` | Groq AI API key |
-| `R2_ACCESS_KEY_ID` | Cloudflare R2 access key |
-| `R2_SECRET_ACCESS_KEY` | Cloudflare R2 secret key |
-| `R2_BUCKET` | Your R2 bucket name (e.g. `nagrik360-uploads`) |
-| `R2_ENDPOINT` | `https://<account-id>.r2.cloudflarestorage.com` |
-| `R2_PUBLIC_URL` | `https://pub-xxxx.r2.dev` (public access URL for the bucket) |
-| `SMTP_*` | Email credentials for sending reports to government (optional) |
-| `GOV_REPORT_EMAIL` | Government grievance email address to send reports to |
-
----
-
-## How photos work (R2 flow)
-
-```
-User picks photo
-      ↓
-multer.memoryStorage() holds it in RAM (never touches server disk)
-      ↓
-uploadToR2(file, 'reports') streams it to Cloudflare R2
-      ↓
-R2 stores it at: nagrik360-uploads/reports/<uuid>.jpg
-      ↓
-Public URL returned: https://pub-xxxx.r2.dev/reports/<uuid>.jpg
-      ↓
-Stored in reports.image_path in Postgres
-      ↓
-Frontend renders <img src="https://pub-xxxx.r2.dev/..."> directly from R2/CDN
-```
-
-The server never stores files locally — this means Render redeploys never lose any photos.
+| `JWT_SECRET` | Secret for signing auth tokens |
+| `GROQ_API_KEY` | Groq AI key for report analysis + chat |
+| `CLOUDINARY_CLOUD_NAME` | Your Cloudinary cloud name |
+| `CLOUDINARY_API_KEY` | Cloudinary API key |
+| `CLOUDINARY_API_SECRET` | Cloudinary API secret |
+| `GOV_REPORT_EMAIL` | Email address to forward civic reports to |
+| `SMTP_*` | Gmail / SMTP credentials for sending government emails |
 
 ---
 
@@ -178,4 +170,4 @@ The server never stores files locally — this means Render redeploys never lose
 MIT — built for civic good. Fork it, localise it, deploy it for your city.
 
 ## Disclaimer
-Nagrik360 is an independent citizen tool, not affiliated with any government. Reports are routed to the email address configured by the deployer — actual resolution depends on the receiving authority.
+Nagrik360 is an independent citizen tool, not affiliated with any government body. Reports are routed to the email address configured by the deployer — actual resolution depends on the receiving authority.

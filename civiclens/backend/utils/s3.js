@@ -1,100 +1,92 @@
 /**
- * Cloudflare R2 — photo upload utility for Nagrik360.
+ * Cloudinary — photo upload utility for Nagrik360.
  *
- * R2 is S3-API-compatible, so we use the standard @aws-sdk/client-s3 package.
- * The key difference from AWS S3:
- *   - AWS_REGION must be "auto"
- *   - An explicit endpoint URL is required (your account's R2 endpoint)
- *   - Public read URLs come from R2's r2.dev domain (or your custom domain),
- *     NOT from the standard s3.amazonaws.com pattern.
+ * Why Cloudinary?
+ *   - Free tier: 25GB storage + 25GB bandwidth/month
+ *   - No credit card required — just email signup
+ *   - Photos are auto-optimised and served via CDN globally
+ *   - Dead simple API: upload a buffer, get a URL back
  *
- * All R2 config lives in env vars prefixed with R2_ — clearly separate from
- * any AWS-specific config you might have elsewhere.
+ * Sign up free at: https://cloudinary.com/users/register_free
+ * Your credentials are on the dashboard home page immediately after signup.
  */
 
-const { S3Client, PutObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
-const { v4: uuid } = require('uuid');
-const path = require('path');
+const cloudinary = require('cloudinary').v2;
 
-// ---- Read R2 config from environment ----
-const R2_BUCKET     = process.env.R2_BUCKET;
-const R2_ENDPOINT   = process.env.R2_ENDPOINT;   // https://<ACCOUNT_ID>.r2.cloudflarestorage.com
-const R2_PUBLIC_URL = process.env.R2_PUBLIC_URL;  // https://pub-xxxx.r2.dev (or custom domain)
-const R2_REGION     = process.env.R2_REGION || 'auto'; // must always be "auto" for R2
-
-// ---- Validate at startup so you get a clear message, not a cryptic auth error ----
-const problems = [];
-if (!R2_BUCKET)   problems.push('R2_BUCKET is not set');
-if (!R2_ENDPOINT) problems.push('R2_ENDPOINT is not set');
-if (!R2_PUBLIC_URL) problems.push('R2_PUBLIC_URL is not set (needed to build public photo URLs)');
-if (!process.env.R2_ACCESS_KEY_ID || process.env.R2_ACCESS_KEY_ID === 'your_r2_access_key_id')
-  problems.push('R2_ACCESS_KEY_ID is missing or still a placeholder');
-if (!process.env.R2_SECRET_ACCESS_KEY || process.env.R2_SECRET_ACCESS_KEY === 'your_r2_secret_access_key')
-  problems.push('R2_SECRET_ACCESS_KEY is missing or still a placeholder');
-
-if (problems.length > 0) {
-  console.warn('\n⚠️  Cloudflare R2 is not fully configured. Photo uploads will fail.');
-  problems.forEach(p => console.warn(`   → ${p}`));
-  console.warn('   See .env.example for setup instructions.\n');
-}
-
-// ---- R2 client ----
-// forcePathStyle: true is required for R2 (and most S3-compatible services).
-const r2 = new S3Client({
-  region: R2_REGION,
-  endpoint: R2_ENDPOINT,
-  forcePathStyle: true,
-  credentials: {
-    accessKeyId: process.env.R2_ACCESS_KEY_ID || '',
-    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY || '',
-  },
+// ---- Configure Cloudinary from environment variables ----
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key:    process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+  secure: true, // always use https URLs
 });
 
-/**
- * Upload a photo (from multer.memoryStorage) directly to R2.
- * Returns the permanent public URL to store in the database.
- *
- * @param {Express.Multer.File} file  - multer file object (has .buffer, .mimetype, .originalname)
- * @param {string} folder             - subfolder inside the bucket, e.g. "reports" or "reports/verification"
- * @returns {Promise<string|null>}    - public URL, e.g. https://pub-xxx.r2.dev/reports/uuid.jpg
- */
-async function uploadToR2(file, folder = 'reports') {
-  if (!file) return null;
+// ---- Validate at startup — clear warnings instead of cryptic errors later ----
+const problems = [];
+if (!process.env.CLOUDINARY_CLOUD_NAME || process.env.CLOUDINARY_CLOUD_NAME === 'your_cloud_name')
+  problems.push('CLOUDINARY_CLOUD_NAME is missing or still a placeholder');
+if (!process.env.CLOUDINARY_API_KEY || process.env.CLOUDINARY_API_KEY === 'your_api_key')
+  problems.push('CLOUDINARY_API_KEY is missing or still a placeholder');
+if (!process.env.CLOUDINARY_API_SECRET || process.env.CLOUDINARY_API_SECRET === 'your_api_secret')
+  problems.push('CLOUDINARY_API_SECRET is missing or still a placeholder');
 
-  const ext = path.extname(file.originalname).toLowerCase() || '.jpg';
-  const key = `${folder}/${uuid()}${ext}`;
-
-  await r2.send(
-    new PutObjectCommand({
-      Bucket: R2_BUCKET,
-      Key: key,
-      Body: file.buffer,
-      ContentType: file.mimetype,
-    })
-  );
-
-  // Public URL = R2_PUBLIC_URL + / + key
-  return `${R2_PUBLIC_URL.replace(/\/$/, '')}/${key}`;
+if (problems.length > 0) {
+  console.warn('\n⚠️  Cloudinary is not fully configured. Photo uploads will fail.');
+  problems.forEach(p => console.warn(`   → ${p}`));
+  console.warn('   Sign up free at https://cloudinary.com/users/register_free');
+  console.warn('   Then copy Cloud Name, API Key, API Secret from your dashboard.\n');
 }
 
 /**
- * Delete a photo from R2 by its public URL.
+ * Upload a photo (from multer.memoryStorage) to Cloudinary.
+ * Returns the permanent public URL to store in the database.
+ *
+ * @param {Express.Multer.File} file   - multer file object (.buffer, .mimetype, .originalname)
+ * @param {string} folder              - Cloudinary folder, e.g. "nagrik360/reports"
+ * @returns {Promise<string|null>}     - secure CDN URL, e.g. https://res.cloudinary.com/...
+ */
+async function uploadToCloudinary(file, folder = 'nagrik360/reports') {
+  if (!file) return null;
+
+  // Cloudinary accepts a stream or base64 data URI.
+  // We wrap the buffer in a Promise using the upload_stream API.
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      {
+        folder,
+        resource_type: 'image',
+        // Auto-optimise quality and format for web delivery
+        transformation: [{ quality: 'auto', fetch_format: 'auto' }],
+      },
+      (error, result) => {
+        if (error) return reject(error);
+        // secure_url is always https
+        resolve(result.secure_url);
+      }
+    );
+    stream.end(file.buffer);
+  });
+}
+
+/**
+ * Delete a photo from Cloudinary by its URL.
  * Non-throwing — a failed delete is logged but never crashes the request.
  *
- * @param {string} publicUrl - the URL previously returned by uploadToR2
+ * @param {string} publicUrl - the URL previously returned by uploadToCloudinary
  */
-async function deleteFromR2(publicUrl) {
+async function deleteFromCloudinary(publicUrl) {
   if (!publicUrl) return;
   try {
-    // Derive the object key by stripping the bucket's public base URL.
-    const base = R2_PUBLIC_URL.replace(/\/$/, '');
-    const key = publicUrl.startsWith(base) ? publicUrl.slice(base.length + 1) : null;
-    if (!key) return; // URL doesn't belong to our bucket — skip silently
-
-    await r2.send(new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: key }));
+    // Derive the public_id from the URL.
+    // Cloudinary URLs look like: https://res.cloudinary.com/<cloud>/image/upload/v123/<folder>/<id>.ext
+    // The public_id is everything after "/upload/v<version>/" and without the file extension.
+    const match = publicUrl.match(/\/upload\/(?:v\d+\/)?(.+)\.[^.]+$/);
+    if (!match) return;
+    const publicId = match[1];
+    await cloudinary.uploader.destroy(publicId);
   } catch (err) {
-    console.error('R2 delete failed (non-fatal):', err.message);
+    console.error('Cloudinary delete failed (non-fatal):', err.message);
   }
 }
 
-module.exports = { uploadToR2, deleteFromR2 };
+module.exports = { uploadToCloudinary, deleteFromCloudinary };
