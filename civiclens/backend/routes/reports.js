@@ -36,11 +36,18 @@ router.post(
       if (!category) return res.status(400).json({ error: 'category is required' });
 
       // Upload photos to Cloudinary — returns permanent CDN URLs.
+      // .catch(() => null) ensures a Cloudinary failure never blocks the report from being saved.
       const imagePath = req.files?.image?.[0]
-        ? await uploadToCloudinary(req.files.image[0], 'nagrik360/reports')
+        ? await uploadToCloudinary(req.files.image[0], 'nagrik360/reports').catch((e) => {
+            console.error('[uploadToCloudinary] image upload failed (non-fatal):', e.message);
+            return null;
+          })
         : null;
       const verificationPath = req.files?.verification_image?.[0]
-        ? await uploadToCloudinary(req.files.verification_image[0], 'nagrik360/verification')
+        ? await uploadToCloudinary(req.files.verification_image[0], 'nagrik360/verification').catch((e) => {
+            console.error('[uploadToCloudinary] verification upload failed (non-fatal):', e.message);
+            return null;
+          })
         : null;
 
       // ---- AI analysis via Groq ----

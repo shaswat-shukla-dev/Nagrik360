@@ -30,8 +30,10 @@ if (!process.env.CLOUDINARY_API_KEY || process.env.CLOUDINARY_API_KEY === 'your_
 if (!process.env.CLOUDINARY_API_SECRET || process.env.CLOUDINARY_API_SECRET === 'your_api_secret')
   problems.push('CLOUDINARY_API_SECRET is missing or still a placeholder');
 
-if (problems.length > 0) {
-  console.warn('\n⚠️  Cloudinary is not fully configured. Photo uploads will fail.');
+const isCloudinaryConfigured = problems.length === 0;
+
+if (!isCloudinaryConfigured) {
+  console.warn('\n⚠️  Cloudinary is not fully configured. Photo uploads will be skipped.');
   problems.forEach(p => console.warn(`   → ${p}`));
   console.warn('   Sign up free at https://cloudinary.com/users/register_free');
   console.warn('   Then copy Cloud Name, API Key, API Secret from your dashboard.\n');
@@ -47,6 +49,10 @@ if (problems.length > 0) {
  */
 async function uploadToCloudinary(file, folder = 'nagrik360/reports') {
   if (!file) return null;
+  if (!isCloudinaryConfigured) {
+    console.warn(`[uploadToCloudinary] Skipping upload — Cloudinary is not configured (folder: ${folder})`);
+    return null;
+  }
 
   // Cloudinary accepts a stream or base64 data URI.
   // We wrap the buffer in a Promise using the upload_stream API.
