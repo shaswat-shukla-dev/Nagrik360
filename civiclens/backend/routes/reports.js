@@ -4,25 +4,30 @@ const { v4: uuid } = require('uuid');
 const { getDB } = require('../db');
 const { analyzeReport } = require('../utils/groqClient');
 const { sendGovReport } = require('../utils/mailer');
-const { uploadBuffer } = require('../utils/s3');
+const { uploadToR2 } = require('../utils/s3');
 
 const router = express.Router();
 
-// ---- Multer setup: hold the file in memory, then stream it straight to S3 ----
-// (no local disk writes — required for stateless/ephemeral hosts like Render)
+// ---- Multer: keep files in memory so we can stream straight to R2.
+//     No files ever touch the server disk — required for Render (ephemeral filesystem). ----
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: (Number(process.env.MAX_FILE_SIZE_MB) || 8) * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
-    if (!file.mimetype.startsWith('image/')) return cb(new Error('Only image files are allowed'));
+    if (!file.mimetype.startsWith('image/')) {
+      return cb(new Error('Only image files are allowed'));
+    }
     cb(null, true);
   },
 });
 
-// ---- Create a new report (with AI analysis) ----
+// ---- POST /api/reports — submit a new civic report ----
 router.post(
   '/',
-  upload.fields([{ name: 'image', maxCount: 1 }, { name: 'verification_image', maxCount: 1 }]),
+  upload.fields([
+    { name: 'image', maxCount: 1 },
+    { name: 'verification_image', maxCount: 1 },
+  ]),
   async (req, res) => {
     try {
       const db = await getDB();
@@ -30,24 +35,20 @@ router.post(
 
       if (!category) return res.status(400).json({ error: 'category is required' });
 
+      // Upload photos to Cloudflare R2; get back permanent public URLs.
       const imagePath = req.files?.image?.[0]
-        ? await uploadBuffer(req.files.image[0], 'reports')
+        ? await uploadToR2(req.files.image[0], 'reports')
         : null;
       const verificationPath = req.files?.verification_image?.[0]
-        ? await uploadBuffer(req.files.verification_image[0], 'reports/verification')
+        ? await uploadToR2(req.files.verification_image[0], 'reports/verification')
         : null;
 
       // ---- AI analysis via Groq ----
       let ai = {};
       try {
-        ai = await analyzeReport({
-          category,
-          description,
-          latitude,
-          longitude,
-          hasImage: !!imagePath,
-        });
+        ai = await analyzeReport({ category, description, latitude, longitude, hasImage: !!imagePath });
       } catch (e) {
+        // AI failure must never block the report from being saved.
         ai = {
           severity: 'medium',
           confidence: 0.4,
@@ -64,9 +65,10 @@ router.post(
 
       const id = uuid();
       await db.run(
-        `INSERT INTO reports (id, user_id, category, description, image_path, image_path_verification,
-          latitude, longitude, address, severity, ai_summary, ai_health_impact, ai_solutions,
-          ai_verified, ai_confidence, status)
+        `INSERT INTO reports
+          (id, user_id, category, description, image_path, image_path_verification,
+           latitude, longitude, address, severity, ai_summary, ai_health_impact, ai_solutions,
+           ai_verified, ai_confidence, status)
          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         [
           id,
@@ -89,15 +91,7 @@ router.post(
       );
 
       const report = await db.get('SELECT * FROM reports WHERE id = ?', id);
-      res.status(201).json({
-        report,
-        ai: {
-          ...ai,
-          suggested_department: ai.suggested_department,
-          gov_complaint_text: ai.gov_complaint_text,
-          social_caption: ai.social_caption,
-        },
-      });
+      res.status(201).json({ report, ai });
     } catch (err) {
       console.error(err);
       res.status(500).json({ error: err.message });
@@ -105,7 +99,7 @@ router.post(
   }
 );
 
-// ---- List / filter reports ----
+// ---- GET /api/reports — list / filter reports ----
 router.get('/', async (req, res) => {
   try {
     const db = await getDB();
@@ -115,7 +109,7 @@ router.get('/', async (req, res) => {
     const params = [];
 
     if (category) { query += ' AND category = ?'; params.push(category); }
-    if (status) { query += ' AND status = ?'; params.push(status); }
+    if (status)   { query += ' AND status = ?';   params.push(status); }
     if (severity) { query += ' AND severity = ?'; params.push(severity); }
 
     query += ' ORDER BY created_at DESC LIMIT ?';
@@ -123,12 +117,12 @@ router.get('/', async (req, res) => {
 
     let reports = await db.all(query, params);
 
+    // Optional proximity filter (Haversine, done in JS since PostGIS not required at this scale)
     if (near_lat && near_lon) {
       const R = Number(radius_km) || 5;
       reports = reports.filter((r) => {
         if (!r.latitude || !r.longitude) return false;
-        const d = haversine(Number(near_lat), Number(near_lon), r.latitude, r.longitude);
-        return d <= R;
+        return haversine(Number(near_lat), Number(near_lon), r.latitude, r.longitude) <= R;
       });
     }
 
@@ -138,25 +132,48 @@ router.get('/', async (req, res) => {
   }
 });
 
-// ---- Get single report ----
+// ---- GET /api/reports/stats/summary — dashboard counters ----
+router.get('/stats/summary', async (req, res) => {
+  const db = await getDB();
+  const total      = await db.get("SELECT COUNT(*) as c FROM reports");
+  const byCategory = await db.all("SELECT category, COUNT(*) as count FROM reports GROUP BY category ORDER BY count DESC");
+  const bySeverity = await db.all("SELECT severity, COUNT(*) as count FROM reports GROUP BY severity");
+  const resolved   = await db.get("SELECT COUNT(*) as c FROM reports WHERE status = 'resolved'");
+  const forwarded  = await db.get("SELECT COUNT(*) as c FROM reports WHERE reported_to_gov = 1");
+  res.json({
+    total: total.c,
+    resolved: resolved.c,
+    forwarded_to_gov: forwarded.c,
+    by_category: byCategory,
+    by_severity: bySeverity,
+  });
+});
+
+// ---- GET /api/reports/:id — single report with comments ----
 router.get('/:id', async (req, res) => {
   const db = await getDB();
   const report = await db.get('SELECT * FROM reports WHERE id = ?', req.params.id);
   if (!report) return res.status(404).json({ error: 'Not found' });
-  const comments = await db.all('SELECT * FROM report_comments WHERE report_id = ? ORDER BY created_at DESC', req.params.id);
+  const comments = await db.all(
+    'SELECT * FROM report_comments WHERE report_id = ? ORDER BY created_at DESC',
+    req.params.id
+  );
   res.json({ report, comments });
 });
 
-// ---- Upvote / community confirm ----
+// ---- POST /api/reports/:id/upvote — community confirm ----
 router.post('/:id/upvote', async (req, res) => {
   try {
     const db = await getDB();
     const fingerprint = req.body.fingerprint || req.ip;
     await db.run(
-      'INSERT OR IGNORE INTO report_votes (id, report_id, user_fingerprint) VALUES (?,?,?)',
+      'INSERT INTO report_votes (id, report_id, user_fingerprint) VALUES (?,?,?) ON CONFLICT DO NOTHING',
       uuid(), req.params.id, fingerprint
     );
-    await db.run('UPDATE reports SET upvotes = (SELECT COUNT(*) FROM report_votes WHERE report_id = ?) WHERE id = ?', req.params.id, req.params.id);
+    await db.run(
+      'UPDATE reports SET upvotes = (SELECT COUNT(*) FROM report_votes WHERE report_id = ?) WHERE id = ?',
+      req.params.id, req.params.id
+    );
     const report = await db.get('SELECT * FROM reports WHERE id = ?', req.params.id);
     res.json({ report });
   } catch (err) {
@@ -164,18 +181,24 @@ router.post('/:id/upvote', async (req, res) => {
   }
 });
 
-// ---- Comment on a report ----
+// ---- POST /api/reports/:id/comments — add a comment ----
 router.post('/:id/comments', async (req, res) => {
   const db = await getDB();
   const { author, comment } = req.body;
   if (!comment) return res.status(400).json({ error: 'comment required' });
   const id = uuid();
-  await db.run('INSERT INTO report_comments (id, report_id, author, comment) VALUES (?,?,?,?)', id, req.params.id, author || 'Anonymous', comment);
-  const comments = await db.all('SELECT * FROM report_comments WHERE report_id = ? ORDER BY created_at DESC', req.params.id);
+  await db.run(
+    'INSERT INTO report_comments (id, report_id, author, comment) VALUES (?,?,?,?)',
+    id, req.params.id, author || 'Anonymous', comment
+  );
+  const comments = await db.all(
+    'SELECT * FROM report_comments WHERE report_id = ? ORDER BY created_at DESC',
+    req.params.id
+  );
   res.status(201).json({ comments });
 });
 
-// ---- Send to government (email/grievance routing) ----
+// ---- POST /api/reports/:id/report-to-gov — email the grievance cell ----
 router.post('/:id/report-to-gov', async (req, res) => {
   try {
     const db = await getDB();
@@ -186,8 +209,10 @@ router.post('/:id/report-to-gov', async (req, res) => {
     const result = await sendGovReport({ report, complaintText });
 
     await db.run(
-      'UPDATE reports SET reported_to_gov = 1, gov_ref_id = ?, status = ?, updated_at = datetime("now") WHERE id = ?',
-      result.refId, 'forwarded_to_authorities', req.params.id
+      `UPDATE reports
+       SET reported_to_gov = 1, gov_ref_id = ?, status = 'forwarded_to_authorities', updated_at = NOW()
+       WHERE id = ?`,
+      result.refId, req.params.id
     );
 
     const updated = await db.get('SELECT * FROM reports WHERE id = ?', req.params.id);
@@ -197,41 +222,30 @@ router.post('/:id/report-to-gov', async (req, res) => {
   }
 });
 
-// ---- Update status (admin/officer use) ----
+// ---- PATCH /api/reports/:id/status — update status (admin/officer) ----
 router.patch('/:id/status', async (req, res) => {
   const db = await getDB();
   const { status } = req.body;
   const allowed = ['submitted', 'forwarded_to_authorities', 'in_progress', 'resolved', 'rejected'];
   if (!allowed.includes(status)) return res.status(400).json({ error: 'invalid status' });
-  await db.run('UPDATE reports SET status = ?, updated_at = datetime("now") WHERE id = ?', status, req.params.id);
+  await db.run(
+    'UPDATE reports SET status = ?, updated_at = NOW() WHERE id = ?',
+    status, req.params.id
+  );
   const report = await db.get('SELECT * FROM reports WHERE id = ?', req.params.id);
   res.json({ report });
 });
 
-// ---- Community stats / dashboard ----
-router.get('/stats/summary', async (req, res) => {
-  const db = await getDB();
-  const total = await db.get('SELECT COUNT(*) as c FROM reports');
-  const byCategory = await db.all('SELECT category, COUNT(*) as count FROM reports GROUP BY category ORDER BY count DESC');
-  const bySeverity = await db.all('SELECT severity, COUNT(*) as count FROM reports GROUP BY severity');
-  const resolved = await db.get("SELECT COUNT(*) as c FROM reports WHERE status = 'resolved'");
-  const forwarded = await db.get("SELECT COUNT(*) as c FROM reports WHERE reported_to_gov = 1");
-  res.json({
-    total: total.c,
-    resolved: resolved.c,
-    forwarded_to_gov: forwarded.c,
-    by_category: byCategory,
-    by_severity: bySeverity,
-  });
-});
-
+// ---- Haversine distance (km) — used for proximity filtering ----
 function haversine(lat1, lon1, lat2, lon2) {
   const R = 6371;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
   const dLon = ((lon2 - lon1) * Math.PI) / 180;
   const a =
     Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
+    Math.cos((lat1 * Math.PI) / 180) *
+    Math.cos((lat2 * Math.PI) / 180) *
+    Math.sin(dLon / 2) ** 2;
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 

@@ -1,37 +1,77 @@
+# ============================================================
+#  render.yaml — Nagrik360 Blueprint for Render.com
+#
+#  This file lets you deploy the entire backend + database
+#  in one click on Render.
+#
+#  How to use:
+#    1. Push your project to a GitHub repository.
+#    2. Go to https://dashboard.render.com → New → Blueprint.
+#    3. Connect the repo. Render reads this file automatically.
+#    4. Fill in the env vars marked sync:false in the dashboard.
+#    5. Deploy.
+# ============================================================
+
 services:
   - type: web
     name: nagrik360-backend
     runtime: node
     rootDir: civiclens/backend
     plan: free
+
     buildCommand: npm install
     startCommand: npm start
     healthCheckPath: /api/health
+
     envVars:
+      # ---- Server ----
       - key: NODE_ENV
         value: production
-      - key: DATABASE_URL
-        sync: false
-      - key: PGSSL
-        value: "true"
-      - key: JWT_SECRET
-        generateValue: true
+      - key: PORT
+        value: "5000"
+
+      # ---- CORS — set this to your Vercel frontend URL after you deploy the frontend ----
+      # Example: https://nagrik360.vercel.app
       - key: CLIENT_URL
         sync: false
+
+      # ---- Database — Render will auto-fill this from the Postgres service below ----
+      - key: DATABASE_URL
+        fromDatabase:
+          name: nagrik360-db
+          property: connectionString
+      - key: PGSSL
+        value: "true"
+
+      # ---- Auth ----
+      - key: JWT_SECRET
+        generateValue: true   # Render generates a secure random value automatically
+      - key: JWT_EXPIRES_IN
+        value: "7d"
+
+      # ---- Groq AI — get from https://console.groq.com/keys ----
       - key: GROQ_API_KEY
         sync: false
       - key: GROQ_MODEL
         value: llama-3.3-70b-versatile
-      - key: AWS_REGION
+
+      # ---- Cloudflare R2 ----
+      - key: R2_REGION
+        value: "auto"
+      - key: R2_ACCESS_KEY_ID
         sync: false
-      - key: AWS_ACCESS_KEY_ID
+      - key: R2_SECRET_ACCESS_KEY
         sync: false
-      - key: AWS_SECRET_ACCESS_KEY
+      - key: R2_BUCKET
         sync: false
-      - key: S3_BUCKET
+      - key: R2_ENDPOINT
         sync: false
-      - key: S3_PUBLIC_BASE_URL
+      - key: R2_PUBLIC_URL
         sync: false
+      - key: MAX_FILE_SIZE_MB
+        value: "8"
+
+      # ---- Email (SMTP) — optional, app works without it in simulated mode ----
       - key: GOV_REPORT_EMAIL
         sync: false
       - key: SMTP_HOST
@@ -45,6 +85,13 @@ services:
       - key: SMTP_FROM
         sync: false
 
+      # ---- Rate Limiting ----
+      - key: RATE_LIMIT_WINDOW_MIN
+        value: "15"
+      - key: RATE_LIMIT_MAX_REQUESTS
+        value: "100"
+
+# ---- Postgres database (free tier — 1 GB, auto-provisioned) ----
 databases:
   - name: nagrik360-db
     plan: free

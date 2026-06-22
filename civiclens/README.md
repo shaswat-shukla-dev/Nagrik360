@@ -1,169 +1,181 @@
-# 🛡️ Nagrik360 — AI-Powered Civic Sense Reporting Platform
+# 🛡️ Nagrik360 — AI-Powered Civic Reporting Platform
 
 > **See it. Report it. Fix it.**
-> Report litter, spitting, potholes, dust, bad AQI, open burning, illegal tree-cutting, and smoke-belching vehicles — verified with live photos, instantly analyzed by AI (Groq/Llama), and routed straight to your local government.
+> Citizens report litter, potholes, bad AQI, open burning, sewage overflow, illegal tree-cutting and more — verified with live photos, instantly analysed by AI, and routed straight to the right government department.
 
-![status](https://img.shields.io/badge/status-active-success) ![node](https://img.shields.io/badge/node-%3E%3D18-green) ![license](https://img.shields.io/badge/license-MIT-blue)
-
----
-
-## ✨ Why Nagrik360 exists
-
-Civic apathy thrives on friction: people see a problem, don't know who to tell, assume nothing will happen, and walk on. Nagrik360 removes every excuse:
-
-1. **One tap to report**, with a live, geo-tagged photo (so it can't be faked from a stock image).
-2. **Groq-powered AI** instantly classifies severity, explains health/environmental impact, and drafts a ready-to-send government complaint — citizens don't need to know legal/bureaucratic language.
-3. **Direct-to-government routing** via email/grievance-cell integration, with a tracked reference ID.
-4. **Social sharing** to amplify pressure publicly (X/Twitter, WhatsApp, Facebook) with an AI-written caption.
-5. **Community feed + upvotes** so repeat offenders/hotspots get visibility and priority.
-6. **Live AQI lookup** for any location, with practical health guidance.
-7. **Gamified leaderboard** rewarding active citizens with points & badges.
-8. **In-app AI assistant** to answer civic questions ("How do I report illegal tree felling?").
+![node](https://img.shields.io/badge/node-%3E%3D18-green) ![license](https://img.shields.io/badge/license-MIT-blue)
 
 ---
 
-## 🧩 Core Features
+## What it does
 
-| Category | Feature |
+1. **Report a civic issue** — pick a category, attach a live photo, allow GPS location, submit.
+2. **AI analysis (Groq / Llama 3.3 70B)** — severity rating, health impact, solution plan, formal government complaint text, social media caption — all generated in one inference call.
+3. **Forward to government** — one click sends the drafted complaint to the configured grievance email with a tracked reference ID.
+4. **Community feed** — public feed of all reports, upvote to confirm, comment threads.
+5. **Live AQI** — real-time air quality (PM2.5, PM10, NO₂, Ozone) via Open-Meteo (free, no key needed).
+6. **AI assistant** — in-app chat for civic questions (waste laws, tree protection, complaint tips).
+7. **Leaderboard** — points and badges for active reporters.
+
+---
+
+## Tech stack
+
+| Layer | Technology |
 |---|---|
-| **Reporting** | 15 issue categories: littering/dumping, public spitting, potholes, road dust, bad AQI, open burning of waste, illegal tree-cutting, vehicle smoke emission, sewage overflow, water leakage, broken streetlight, noise pollution, stray-animal hazard, illegal construction, other |
-| **Verification** | Dual live-photo capture (primary + verification angle), camera-only capture on mobile (`capture="environment"`), GPS geo-tagging |
-| **AI Analysis (Groq)** | Severity scoring (low/medium/high/critical), plausibility/confidence score, one-line officer-ready summary, 3–5 point health & environmental impact list, multi-stakeholder solution plan (Citizen / Community / Local Authority / Government), suggested government department |
-| **Government Routing** | Auto-drafted formal complaint letter, one-click "Send to government" via email (SMTP) with tracked reference ID, status pipeline (`submitted → forwarded_to_authorities → in_progress → resolved/rejected`) |
-| **Social Amplification** | AI-generated awareness caption + hashtags, one-click share to X, WhatsApp, Facebook, copy-to-clipboard |
-| **Community** | Live public feed with filtering by category, upvote/confirm system (prevents duplicate votes via fingerprinting), comment threads |
-| **Air Quality** | Live AQI/PM2.5/PM10/NO₂/Ozone lookup (Open-Meteo, no key required), color-coded AQI bands, plain-language health guidance & reduction tips |
-| **AI Assistant** | Conversational chat (Groq) for civic education — waste segregation, tree-cutting laws, AQI health effects, how to write strong complaints |
-| **Gamification** | Points & badges, public leaderboard |
-| **Accounts** | Email/password signup & login (JWT), guest mode supported for reporting |
-| **Dashboard/Stats** | Live counters: total reports, forwarded to government, resolved |
-| **Security** | Helmet hardening, rate limiting, file-type/size validated uploads, bcrypt password hashing, JWT auth |
-| **UX** | Mobile-first responsive design, floating report button, dark "asphalt" civic theme, accessible focus states, toast notifications |
+| Backend | Node.js + Express |
+| Database | PostgreSQL (via `pg`) |
+| Photo storage | **Cloudflare R2** (S3-compatible, zero egress fees) |
+| AI | Groq API — `llama-3.3-70b-versatile` |
+| Email | Nodemailer (SMTP) |
+| Auth | JWT + bcrypt |
+| Frontend | Vanilla JS / HTML / CSS — no build step |
+| Backend deploy | Render.com (Web Service + Postgres) |
+| Frontend deploy | Vercel (static) |
 
 ---
 
-## 🏗️ Architecture
+## Project structure
 
 ```
 nagrik360/
-├── backend/                  # Node.js + Express REST API
-│   ├── server.js             # App entrypoint
-│   ├── db.js                 # SQLite schema & connection
-│   ├── routes/
-│   │   ├── reports.js        # Report CRUD, AI analysis, gov routing, voting
-│   │   ├── ai.js              # Chat assistant + AQI lookup
-│   │   └── auth.js            # Signup/login/leaderboard
-│   ├── utils/
-│   │   ├── groqClient.js      # Groq LLM integration (analysis, chat)
-│   │   ├── aqi.js              # Open-Meteo AQI fetch
-│   │   └── mailer.js           # SMTP government-report dispatch
-│   ├── uploads/                # User-submitted photos (gitignored)
-│   ├── data/                   # SQLite database file (gitignored)
-│   ├── Dockerfile
-│   ├── package.json
-│   └── .env.example
-├── frontend/                  # Static SPA (vanilla JS, no build step)
-│   ├── index.html
-│   ├── css/style.css
-│   └── js/{config.js, api.js, app.js}
-├── docker-compose.yml          # Full-stack local/prod orchestration
-├── DEPLOYMENT.md                # Exhaustive deployment guide
-├── .gitignore
-└── README.md
+├── civiclens/
+│   ├── backend/
+│   │   ├── server.js              ← Express app entrypoint
+│   │   ├── db.js                  ← PostgreSQL pool + schema (auto-creates tables on first run)
+│   │   ├── .env.example           ← Copy to .env and fill in your values
+│   │   ├── package.json
+│   │   ├── routes/
+│   │   │   ├── reports.js         ← Report CRUD, photo upload → R2, AI analysis, gov routing
+│   │   │   ├── ai.js              ← Chat assistant + AQI lookup
+│   │   │   └── auth.js            ← Signup, login, leaderboard
+│   │   └── utils/
+│   │       ├── s3.js              ← Cloudflare R2 upload/delete
+│   │       ├── groqClient.js      ← Groq AI calls (report analysis + chat)
+│   │       ├── aqi.js             ← Open-Meteo AQI fetch
+│   │       └── mailer.js          ← SMTP government email dispatch
+│   ├── frontend/
+│   │   ├── index.html
+│   │   ├── css/
+│   │   │   ├── style.css
+│   │   │   └── animations.css
+│   │   ├── js/
+│   │   │   ├── config.js          ← API base URL (change for production)
+│   │   │   ├── api.js             ← All fetch calls to the backend
+│   │   │   ├── app.js             ← App logic, UI rendering
+│   │   │   └── animations.js      ← Motion/interaction layer
+│   │   └── vercel.json
+│   ├── README.md                  ← You are here
+│   ├── DEPLOYMENT.md              ← Step-by-step deploy guide
+│   └── .gitignore
+└── render.yaml                    ← Render Blueprint (one-click backend + DB deploy)
 ```
-
-**Stack:** Node.js · Express · SQLite (zero-config, swap for Postgres in production if needed) · Groq API (Llama 3.3 70B) · Vanilla JS/HTML/CSS frontend (no build tooling required — deploy anywhere static) · Multer (uploads) · Nodemailer (SMTP) · JWT + bcrypt (auth) · Open-Meteo (free AQI data).
 
 ---
 
-## 🚀 Quick Start (Local Development)
+## Local development
 
 ### Prerequisites
 - Node.js ≥ 18
+- PostgreSQL running locally (or a free cloud Postgres from Render/Supabase/Neon)
 - A free [Groq API key](https://console.groq.com/keys)
-- (Optional) Gmail/SMTP credentials for live government email delivery — without it, the app runs in **simulated send mode** so you can fully test the flow
+- A [Cloudflare account](https://dash.cloudflare.com) with R2 bucket set up (see DEPLOYMENT.md §3)
 
-### 1. Clone & install
+### 1. Install dependencies
 ```bash
-git clone <your-repo-url> nagrik360
-cd nagrik360/backend
+cd civiclens/backend
 npm install
 ```
 
 ### 2. Configure environment
 ```bash
 cp .env.example .env
-# then edit .env and set at minimum:
-#   GROQ_API_KEY=gsk_xxxxxxxxxxxxxxxxxxxx
-#   JWT_SECRET=<any long random string>
 ```
+Open `.env` and fill in at minimum:
+- `DATABASE_URL` — your Postgres connection string
+- `PGSSL=false` — for local Postgres without SSL
+- `GROQ_API_KEY` — from console.groq.com
+- `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_ENDPOINT`, `R2_PUBLIC_URL` — from Cloudflare R2
 
-### 3. Run the backend
+See DEPLOYMENT.md §3 for exact steps to get R2 credentials.
+
+### 3. Start the backend
 ```bash
-npm run dev      # nodemon, auto-restarts on change
-# or
-npm start
+npm run dev
 ```
-Backend runs at `http://localhost:5000`. Health check: `GET /api/health`.
+The server starts at `http://localhost:5000`. On first run it auto-creates all database tables — no migration script needed.
 
-### 4. Run the frontend
-The frontend is a static SPA — no build step needed. Easiest options:
+Check it's working:
+```bash
+curl http://localhost:5000/api/health
+# → {"status":"ok","service":"nagrik360-backend",...}
+```
+
+### 4. Start the frontend
+The frontend is pure static HTML — no build step.
+
 ```bash
 cd ../frontend
-npx serve .          # or
-python3 -m http.server 5500
+npx serve .
+# opens at http://localhost:3000
 ```
-Open `http://localhost:5500`. It auto-detects `localhost` and points to `http://localhost:5000/api`.
+Or just open `index.html` directly in a browser (though `file://` blocks some browser APIs — a local server is better).
 
-### 5. Try it out
-- Go to **Report** tab → pick a category → capture/upload a photo → allow location → submit.
-- Watch the AI severity card populate in real time.
-- Click **Send directly to government** (simulated unless SMTP is configured).
-- Click **Post on X / WhatsApp** to test social sharing.
-- Check the **Air Quality** tab for live AQI at your location.
-- Chat with the **AI Assistant** tab.
-
----
-
-## 🔑 Environment Variables Reference
-
-See [`backend/.env.example`](backend/.env.example) for the full annotated list — covers server port, Groq model selection, JWT secret, SMTP credentials for government routing, upload limits, and rate limiting.
-
----
-
-## 🧠 How the AI Blend Works (Groq)
-
-Every report is sent to Groq's `llama-3.3-70b-versatile` model (configurable via `GROQ_MODEL`) with a structured-JSON system prompt that returns:
-
-```json
-{
-  "severity": "high",
-  "confidence": 0.86,
-  "is_plausible": true,
-  "summary": "Garbage dumped on footpath blocking pedestrian access near bus stop.",
-  "health_impact": ["...", "..."],
-  "solutions": [{"who": "Citizen", "action": "..."}, {"who": "Local Authority", "action": "..."}],
-  "suggested_department": "Municipal Sanitation Department",
-  "gov_complaint_text": "Dear Sir/Madam, ...",
-  "social_caption": "Garbage dumped near Sector 12 bus stop for 3 days! ... #SwachhBharat"
-}
+### 5. What to set in config.js for production
+Before deploying the frontend, update `frontend/js/config.js`:
+```js
+const CONFIG = {
+  API_BASE: 'https://your-backend.onrender.com/api',
+};
 ```
-This single call powers the severity badge, health-impact list, solution plan, government complaint draft, and social caption — one inference, five UI surfaces.
+(For local dev it auto-uses `http://localhost:5000/api` when on localhost — no change needed.)
 
 ---
 
-## 🗺️ Roadmap / Ideas for Contributors
-- Image-based AI verification using Groq's vision-capable models (currently text/metadata-based)
-- Push notifications when a nearby report changes status
-- PostgreSQL + PostGIS for production-scale geo queries
-- Admin/officer dashboard with map clustering
-- Multi-language support (Hindi, regional languages)
-- PWA offline queueing for poor-connectivity areas
+## Environment variables
+
+All variables are documented with explanations in `backend/.env.example`. Here's a quick reference:
+
+| Variable | What it does |
+|---|---|
+| `DATABASE_URL` | PostgreSQL connection string |
+| `PGSSL` | `true` for cloud Postgres, `false` for local |
+| `JWT_SECRET` | Secret for signing auth tokens — make it long and random |
+| `GROQ_API_KEY` | Groq AI API key |
+| `R2_ACCESS_KEY_ID` | Cloudflare R2 access key |
+| `R2_SECRET_ACCESS_KEY` | Cloudflare R2 secret key |
+| `R2_BUCKET` | Your R2 bucket name (e.g. `nagrik360-uploads`) |
+| `R2_ENDPOINT` | `https://<account-id>.r2.cloudflarestorage.com` |
+| `R2_PUBLIC_URL` | `https://pub-xxxx.r2.dev` (public access URL for the bucket) |
+| `SMTP_*` | Email credentials for sending reports to government (optional) |
+| `GOV_REPORT_EMAIL` | Government grievance email address to send reports to |
 
 ---
 
-## 📄 License
-MIT — built for civic good. Fork it, deploy it for your city, make it better.
+## How photos work (R2 flow)
 
-## ⚠️ Disclaimer
-Nagrik360 is an independent citizen tool and is **not affiliated with any government body**. Reports are routed as citizen grievances to the email address configured by the deployer; actual resolution depends on the receiving authority.
+```
+User picks photo
+      ↓
+multer.memoryStorage() holds it in RAM (never touches server disk)
+      ↓
+uploadToR2(file, 'reports') streams it to Cloudflare R2
+      ↓
+R2 stores it at: nagrik360-uploads/reports/<uuid>.jpg
+      ↓
+Public URL returned: https://pub-xxxx.r2.dev/reports/<uuid>.jpg
+      ↓
+Stored in reports.image_path in Postgres
+      ↓
+Frontend renders <img src="https://pub-xxxx.r2.dev/..."> directly from R2/CDN
+```
+
+The server never stores files locally — this means Render redeploys never lose any photos.
+
+---
+
+## License
+MIT — built for civic good. Fork it, localise it, deploy it for your city.
+
+## Disclaimer
+Nagrik360 is an independent citizen tool, not affiliated with any government. Reports are routed to the email address configured by the deployer — actual resolution depends on the receiving authority.

@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+
+# Environment secrets — NEVER commit .env
+.env
+.env.local
+.env.production
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Old local-storage artifacts (no longer used in production)
+backend/data/
+backend/uploads/
+
+# Build output
+dist/
+build/
